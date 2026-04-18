@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>Voice Chat</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0c0c10;
+      --surface: #15151c;
+      --border: rgba(255,255,255,0.07);
+      --accent: #7c6dfa;
+      --accent-glow: rgba(124,109,250,0.25);
+      --text: #f0eff8;
+      --muted: #7c7a8e;
+      --danger: #fa6d6d;
+      --green: #5df5b0;
+      --font-head: 'Syne', sans-serif;
+      --font-mono: 'DM Mono', monospace;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-head);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    /* Animated ambient background */
+    .ambient {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+    }
+    .ambient::before {
+      content: '';
+      position: absolute;
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, rgba(124,109,250,0.12) 0%, transparent 70%);
+      top: -150px;
+      left: 50%;
+      transform: translateX(-50%);
+      animation: drift 8s ease-in-out infinite alternate;
+    }
+    .ambient::after {
+      content: '';
+      position: absolute;
+      width: 400px;
+      height: 400px;
+      background: radial-gradient(circle, rgba(93,245,176,0.07) 0%, transparent 70%);
+      bottom: -100px;
+      right: -100px;
+      animation: drift2 10s ease-in-out infinite alternate;
+    }
+    @keyframes drift { from { transform: translateX(-50%) translateY(0); } to { transform: translateX(-50%) translateY(40px); } }
+    @keyframes drift2 { from { transform: translate(0,0); } to { transform: translate(-30px, -30px); } }
+
+    /* App wrapper */
+    .app {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      max-width: 420px;
+      padding: 0 20px 32px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+    }
+
+    /* Header */
+    .header {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 24px 0 32px;
+    }
+    .logo {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--text);
+    }
+    .logo span { color: var(--accent); }
+    .user-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      padding: 6px 12px 6px 6px;
+    }
+    .avatar {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--green));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 700;
+      color: #fff;
+    }
+    .user-name { font-size: 12px; font-family: var(--font-mono); color: var(--muted); }
+
+    /* Status */
+    .status-bar {
+      width: 100%;
+      margin-bottom: 32px;
+    }
+    .status-text {
+      font-size: 11px;
+      font-family: var(--font-mono);
+      color: var(--muted);
+      text-align: center;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .status-text.active { color: var(--green); }
+    .status-text.waiting { color: var(--accent); animation: blink 1.4s ease-in-out infinite; }
+    @keyframes blink { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+
+    /* Main orb - the centerpiece */
+    .orb-container {
+      position: relative;
+      width: 220px;
+      height: 220px;
+      margin-bottom: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .orb-ring {
+      position: absolute;
+      border-radius: 50%;
+      border: 1px solid transparent;
+      animation: spin-ring 6s linear infinite;
+    }
+    .orb-ring-1 {
+      width: 220px;
+      height: 220px;
+      border-top-color: rgba(124,109,250,0.4);
+      border-right-color: rgba(124,109,250,0.1);
+      animation-duration: 8s;
+    }
+    .orb-ring-2 {
+      width: 190px;
+      height: 190px;
+      border-bottom-color: rgba(93,245,176,0.3);
+      border-left-color: rgba(93,245,176,0.08);
+      animation-duration: 5s;
+      animation-direction: reverse;
+    }
+    @keyframes spin-ring { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+    .orb {
+      width: 160px;
+      height: 160px;
+      border-radius: 50%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .orb::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, rgba(124,109,250,0.2) 0%, transparent 60%);
+    }
+    .orb:hover { transform: scale(1.04); box-shadow: 0 0 60px var(--accent-glow); }
+    .orb.active { box-shadow: 0 0 80px var(--accent-glow); animation: pulse 2s ease-in-out infinite; }
+    .orb.searching { animation: pulse-search 1.2s ease-in-out infinite; }
+    @keyframes pulse { 0%,100%{box-shadow:0 0 40px var(--accent-glow);} 50%{box-shadow:0 0 80px rgba(124,109,250,0.4);} }
+    @keyframes pulse-search { 0%,100%{box-shadow:0 0 30px rgba(124,109,250,0.2);} 50%{box-shadow:0 0 60px rgba(124,109,250,0.35);} }
+
+    .orb-icon { position: relative; z-index: 1; }
+    .orb-icon svg { width: 48px; height: 48px; }
+
+    /* Sound bars animation */
+    .sound-bars {
+      display: flex;
+      align-items: flex-end;
+      gap: 4px;
+      height: 40px;
+      position: relative;
+      z-index: 1;
+    }
+    .bar {
+      width: 5px;
+      background: var(--accent);
+      border-radius: 3px;
+      transform-origin: bottom;
+      transition: height 0.1s;
+    }
+    .bar:nth-child(1) { animation: bar1 0.9s ease-in-out infinite; }
+    .bar:nth-child(2) { animation: bar2 1.1s ease-in-out infinite 0.1s; }
+    .bar:nth-child(3) { animation: bar3 0.8s ease-in-out infinite 0.2s; }
+    .bar:nth-child(4) { animation: bar2 1.0s ease-in-out infinite 0.05s; }
+    .bar:nth-child(5) { animation: bar1 0.9s ease-in-out infinite 0.15s; }
+    @keyframes bar1 { 0%,100%{height:8px;} 50%{height:24px;} }
+    @keyframes bar2 { 0%,100%{height:14px;} 50%{height:36px;} }
+    @keyframes bar3 { 0%,100%{height:20px;} 50%{height:40px;} }
+
+    /* Info card */
+    .info-card {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 20px;
+      margin-bottom: 24px;
+      display: none;
+    }
+    .info-card.show { display: block; }
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 0;
+    }
+    .info-label { font-size: 11px; font-family: var(--font-mono); color: var(--muted); letter-spacing: 0.06em; }
+    .info-value { font-size: 13px; font-family: var(--font-mono); color: var(--text); }
+    .info-value.flag { font-size: 16px; }
+    .divider { height: 1px; background: var(--border); margin: 8px 0; }
+
+    /* Timer */
+    .timer {
+      font-size: 28px;
+      font-family: var(--font-mono);
+      font-weight: 500;
+      color: var(--accent);
+      text-align: center;
+      letter-spacing: 0.05em;
+      margin-bottom: 24px;
+      display: none;
+    }
+    .timer.show { display: block; }
+
+    /* Buttons */
+    .controls {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .btn-primary {
+      width: 100%;
+      padding: 16px;
+      background: var(--accent);
+      border: none;
+      border-radius: 14px;
+      color: #fff;
+      font-family: var(--font-head);
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s ease, transform 0.15s ease;
+      letter-spacing: -0.01em;
+    }
+    .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+    .btn-primary:active { transform: scale(0.99); }
+    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+    .btn-row { display: flex; gap: 10px; }
+
+    .btn-icon {
+      flex: 1;
+      padding: 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      color: var(--text);
+      font-size: 13px;
+      font-family: var(--font-mono);
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .btn-icon:hover { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.15); }
+    .btn-icon.danger { color: var(--danger); border-color: rgba(250,109,109,0.3); }
+    .btn-icon.danger:hover { background: rgba(250,109,109,0.08); }
+    .btn-icon.muted-active { color: var(--muted); }
+
+    /* Online count */
+    .online-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 20px;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      color: var(--muted);
+    }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: dot-pulse 2s ease-in-out infinite; }
+    @keyframes dot-pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: rgba(30,30,40,0.9);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 20px;
+      font-size: 13px;
+      font-family: var(--font-mono);
+      color: var(--text);
+      backdrop-filter: blur(10px);
+      z-index: 100;
+      transition: transform 0.3s ease;
+      white-space: nowrap;
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+  <div class="ambient"></div>
+
+  <div class="app">
+    <div class="header">
+      <div class="logo">voice<span>.</span>link</div>
+      <div class="user-badge">
+        <div class="avatar" id="avatarEl">?</div>
+        <span class="user-name" id="userNameEl">guest</span>
+      </div>
+    </div>
+
+    <div class="status-bar">
+      <div class="status-text" id="statusText">tap the orb to find someone</div>
+    </div>
+
+    <div class="orb-container">
+      <div class="orb-ring orb-ring-1"></div>
+      <div class="orb-ring orb-ring-2"></div>
+      <div class="orb" id="orb" onclick="handleOrbClick()">
+        <div class="orb-icon" id="orbContent">
+          <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="24" cy="20" r="8" stroke="#7c6dfa" stroke-width="2"/>
+            <path d="M16 20c0-4.418 3.582-8 8-8s8 3.582 8 8" stroke="#7c6dfa" stroke-width="2" stroke-linecap="round"/>
+            <path d="M12 24c0 6.627 5.373 12 12 12s12-5.373 12-12" stroke="rgba(124,109,250,0.4)" stroke-width="2" stroke-linecap="round"/>
+            <line x1="24" y1="36" x2="24" y2="40" stroke="rgba(124,109,250,0.4)" stroke-width="2" stroke-linecap="round"/>
+            <line x1="19" y1="40" x2="29" y2="40" stroke="rgba(124,109,250,0.4)" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <div class="timer" id="timer">0:00</div>
+
+    <div class="info-card" id="infoCard">
+      <div class="info-row">
+        <span class="info-label">STRANGER</span>
+        <span class="info-value" id="strangerName">—</span>
+      </div>
+      <div class="divider"></div>
+      <div class="info-row">
+        <span class="info-label">LOCATION</span>
+        <span class="info-value" id="strangerLocation">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">LANGUAGE</span>
+        <span class="info-value" id="strangerLang">—</span>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="btn-primary" id="mainBtn" onclick="handleMainBtn()">Find a Stranger</button>
+      <div class="btn-row" id="callControls" style="display:none;">
+        <button class="btn-icon" id="muteBtn" onclick="toggleMute()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" y1="19" x2="12" y2="23"/>
+            <line x1="8" y1="23" x2="16" y2="23"/>
+          </svg>
+          Mute
+        </button>
+        <button class="btn-icon danger" onclick="endCall()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07C9.44 16.29 7.62 14.48 6.29 12.37a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 5.18 1.5h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L9.13 9.44"/>
+            <line x1="23" y1="1" x2="1" y2="23"/>
+          </svg>
+          End
+        </button>
+        <button class="btn-icon" onclick="nextStranger()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+          Next
+        </button>
+      </div>
+    </div>
+
+    <div class="online-pill">
+      <div class="dot"></div>
+      <span id="onlineCount">0</span> online now
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    // ── Telegram Web App init ──────────────────────────────
+    const tg = window.Telegram?.WebApp;
+    let tgUser = null;
+    if (tg) {
+      tg.ready();
+      tg.expand();
+      tgUser = tg.initDataUnsafe?.user;
+    }
+
+    // Set user info in header
+    const displayName = tgUser?.first_name || 'guest';
+    const initials = displayName.slice(0, 2).toUpperCase();
+    document.getElementById('avatarEl').textContent = initials;
+    document.getElementById('userNameEl').textContent = displayName.toLowerCase();
+
+    // ── State ──────────────────────────────────────────────
+    let state = 'idle'; // idle | searching | connected
+    let isMuted = false;
+    let timerInterval = null;
+    let callSeconds = 0;
+    let currentRoom = null;
+    let peerConnection = null;
+    let localStream = null;
+
+    // ── Socket ─────────────────────────────────────────────
+    const socket = io({ query: { userId: tgUser?.id || 'anon_' + Math.random().toString(36).slice(2) } });
+
+    socket.on('connect', () => { updateOnline(0); });
+    socket.on('online-count', n => updateOnline(n));
+
+    socket.on('waiting', () => {
+      setState('searching');
+    });
+
+    socket.on('matched', async ({ roomId, stranger }) => {
+      currentRoom = roomId;
+      setState('connected');
+      showStranger(stranger);
+      startTimer();
+      showToast('Connected! Say hello 👋');
+      await initWebRTC(roomId, true);
+    });
+
+    socket.on('offer', async ({ offer, roomId }) => {
+      if (roomId !== currentRoom) return;
+      await initWebRTC(roomId, false);
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+      const answer = await peerConnection.createAnswer();
+      await peerConnection.setLocalDescription(answer);
+      socket.emit('answer', { roomId, answer });
+    });
+
+    socket.on('answer', async ({ answer }) => {
+      await peerConnection?.setRemoteDescription(new RTCSessionDescription(answer));
+    });
+
+    socket.on('ice-candidate', async ({ candidate }) => {
+      if (candidate) await peerConnection?.addIceCandidate(new RTCIceCandidate(candidate));
+    });
+
+    socket.on('call-ended', () => {
+      resetCall();
+      showToast('Stranger disconnected');
+    });
+
+    // ── WebRTC ─────────────────────────────────────────────
+    async function initWebRTC(roomId, isInitiator) {
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      } catch(e) {
+        showToast('Microphone access needed');
+        return;
+      }
+
+      peerConnection = new RTCPeerConnection({
+        iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }]
+      });
+
+      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+      peerConnection.onicecandidate = ({ candidate }) => {
+        if (candidate) socket.emit('ice-candidate', { roomId, candidate });
+      };
+
+      peerConnection.ontrack = ({ streams }) => {
+        const audio = new Audio();
+        audio.srcObject = streams[0];
+        audio.play().catch(() => {});
+      };
+
+      if (isInitiator) {
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+        socket.emit('offer', { roomId, offer });
+      }
+    }
+
+    // ── UI helpers ─────────────────────────────────────────
+    function setState(s) {
+      state = s;
+      const orb = document.getElementById('orb');
+      const statusText = document.getElementById('statusText');
+      const mainBtn = document.getElementById('mainBtn');
+      const callControls = document.getElementById('callControls');
+      const orbContent = document.getElementById('orbContent');
+
+      orb.className = 'orb';
+      if (s === 'idle') {
+        statusText.textContent = 'tap the orb to find someone';
+        statusText.className = 'status-text';
+        mainBtn.textContent = 'Find a Stranger';
+        mainBtn.disabled = false;
+        callControls.style.display = 'none';
+        orbContent.innerHTML = micIcon();
+        document.getElementById('infoCard').classList.remove('show');
+        document.getElementById('timer').classList.remove('show');
+      } else if (s === 'searching') {
+        statusText.textContent = 'searching...';
+        statusText.className = 'status-text waiting';
+        mainBtn.textContent = 'Cancel';
+        mainBtn.disabled = false;
+        orb.classList.add('searching');
+        callControls.style.display = 'none';
+        orbContent.innerHTML = searchIcon();
+      } else if (s === 'connected') {
+        statusText.textContent = 'connected';
+        statusText.className = 'status-text active';
+        mainBtn.style.display = 'none';
+        callControls.style.display = 'flex';
+        orb.classList.add('active');
+        orbContent.innerHTML = soundBarsHTML();
+        document.getElementById('infoCard').classList.add('show');
+        document.getElementById('timer').classList.add('show');
+      }
+    }
+
+    function showStranger(s) {
+      document.getElementById('strangerName').textContent = s.name || 'Anonymous';
+      document.getElementById('strangerLocation').textContent = s.location || 'Unknown';
+      document.getElementById('strangerLang').textContent = s.language || 'Unknown';
+    }
+
+    function startTimer() {
+      callSeconds = 0;
+      if (timerInterval) clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+        callSeconds++;
+        const m = Math.floor(callSeconds / 60);
+        const s = callSeconds % 60;
+        document.getElementById('timer').textContent = `${m}:${String(s).padStart(2,'0')}`;
+      }, 1000);
+    }
+
+    function resetCall() {
+      if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+      if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+      if (peerConnection) { peerConnection.close(); peerConnection = null; }
+      currentRoom = null;
+      isMuted = false;
+      document.getElementById('muteBtn').classList.remove('muted-active');
+      document.getElementById('mainBtn').style.display = '';
+      setState('idle');
+    }
+
+    function updateOnline(n) {
+      document.getElementById('onlineCount').textContent = n;
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 2800);
+    }
+
+    // ── Button handlers ────────────────────────────────────
+    function handleOrbClick() {
+      if (state === 'idle') findStranger();
+      else if (state === 'connected') nextStranger();
+    }
+
+    function handleMainBtn() {
+      if (state === 'idle') findStranger();
+      else if (state === 'searching') cancelSearch();
+    }
+
+    function findStranger() {
+      socket.emit('search-stranger');
+      setState('searching');
+    }
+
+    function cancelSearch() {
+      socket.emit('cancel-search');
+      setState('idle');
+    }
+
+    function endCall() {
+      if (currentRoom) socket.emit('end-call', currentRoom);
+      resetCall();
+    }
+
+    function nextStranger() {
+      endCall();
+      setTimeout(findStranger, 300);
+    }
+
+    function toggleMute() {
+      isMuted = !isMuted;
+      if (localStream) localStream.getAudioTracks().forEach(t => { t.enabled = !isMuted; });
+      const btn = document.getElementById('muteBtn');
+      btn.classList.toggle('muted-active', isMuted);
+      btn.querySelector('span') && (btn.querySelector('span').textContent = isMuted ? 'Unmute' : 'Mute');
+      showToast(isMuted ? 'Muted' : 'Unmuted');
+    }
+
+    // ── Icon helpers ───────────────────────────────────────
+    function micIcon() {
+      return `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="24" cy="20" r="8" stroke="#7c6dfa" stroke-width="2"/>
+        <path d="M16 20c0-4.418 3.582-8 8-8s8 3.582 8 8" stroke="#7c6dfa" stroke-width="2" stroke-linecap="round"/>
+        <path d="M12 24c0 6.627 5.373 12 12 12s12-5.373 12-12" stroke="rgba(124,109,250,0.4)" stroke-width="2" stroke-linecap="round"/>
+        <line x1="24" y1="36" x2="24" y2="40" stroke="rgba(124,109,250,0.4)" stroke-width="2" stroke-linecap="round"/>
+        <line x1="19" y1="40" x2="29" y2="40" stroke="rgba(124,109,250,0.4)" stroke-width="2" stroke-linecap="round"/>
+      </svg>`;
+    }
+
+    function searchIcon() {
+      return `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="22" cy="22" r="10" stroke="#7c6dfa" stroke-width="2"/>
+        <line x1="30" y1="30" x2="38" y2="38" stroke="#7c6dfa" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="22" cy="22" r="4" stroke="rgba(124,109,250,0.4)" stroke-width="1.5"/>
+      </svg>`;
+    }
+
+    function soundBarsHTML() {
+      return `<div class="sound-bars">
+        <div class="bar" style="height:10px"></div>
+        <div class="bar" style="height:20px"></div>
+        <div class="bar" style="height:32px"></div>
+        <div class="bar" style="height:20px"></div>
+        <div class="bar" style="height:10px"></div>
+      </div>`;
+    }
+  </script>
+</body>
+</html>
