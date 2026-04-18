@@ -502,13 +502,11 @@
         return;
       }
 
-      peerConnection = new RTCPeerConnection({
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-          { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' }
-        ]
-      });
+      // Fetch TURN credentials from server
+      const turnRes = await fetch('/api/turn-credentials');
+      const iceServers = await turnRes.json();
+
+      peerConnection = new RTCPeerConnection({ iceServers });
 
       localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
@@ -678,4 +676,5 @@
   </script>
 </body>
 </html>
+
 
