@@ -502,9 +502,13 @@
         return;
       }
 
-      // Fetch TURN credentials from server
-      const turnRes = await fetch('/api/turn-credentials');
-      const iceServers = await turnRes.json();
+      const iceServers = [
+        { urls: 'stun:stun.metered.ca:80' },
+        { urls: 'turn:airtalkk.metered.live:80', username: 'e9f80d291a6abf6c75072d1b', credential: '+kpzsjXcTjy3MT0U' },
+        { urls: 'turn:airtalkk.metered.live:443', username: 'e9f80d291a6abf6c75072d1b', credential: '+kpzsjXcTjy3MT0U' },
+        { urls: 'turns:airtalkk.metered.live:443', username: 'e9f80d291a6abf6c75072d1b', credential: '+kpzsjXcTjy3MT0U' },
+        { urls: 'turn:airtalkk.metered.live:80?transport=tcp', username: 'e9f80d291a6abf6c75072d1b', credential: '+kpzsjXcTjy3MT0U' }
+      ];
 
       peerConnection = new RTCPeerConnection({ iceServers });
 
@@ -676,5 +680,4 @@
   </script>
 </body>
 </html>
-
 
